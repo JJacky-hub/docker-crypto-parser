@@ -42,7 +42,7 @@ while True:
         # Достаем цену в формате Coinbase
         price = float(data['data']['amount'])
         
-        print(f"📈 [PostgreSQL] Отправка в БД: Курс BTC = ${price:,.2f}")
+        print(f"📈 [PostgreSQL] Отправка поочередно идет в БД: Курс BTC = ${price:,.2f}")
         
         cursor.execute(
             "INSERT INTO btc_history (timestamp, price) VALUES (NOW(), %s);",
