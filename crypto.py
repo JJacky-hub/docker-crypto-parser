@@ -1,61 +1,45 @@
-import requests
-import time
-import psycopg2
-import os
+import asyncio
+from fastapi import FastAPI
+import uvicorn
+# ... твои импорты для работы с базой и запросами ...
 
-print("🚀 Запуск крипто-парсера (Coinbase API) в режиме интеграции с PostgreSQL...")
+app = FastAPI()
 
-DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
-DB_NAME = os.getenv("DB_NAME", "crypto_db")
-DB_USER = os.getenv("DB_USER", "postgres_user")
-DB_PASS = os.getenv("DB_PASS", "super_password")
+# Переменная, где мы будем хранить последнюю цену для быстрого вывода в веб
+latest_price = {"btc_usd": "No data yet", "updated_at": "Never"}
 
-headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-# Переключаемся на Coinbase API, который отлично работает в США
-url = 'https://api.coinbase.com/v2/prices/BTC-USD/spot'
-
-# Фаза инициализации базы данных
-while True:
-    try:
-        conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS btc_history (
-                id SERIAL PRIMARY KEY,
-                timestamp TIMESTAMP NOT NULL,
-                price NUMERIC(12, 2) NOT NULL
-            );
-        """)
-        conn.commit()
-        print("✅ Успешно подключились к PostgreSQL. Таблица btc_history готова.")
-        break
-    except psycopg2.OperationalError:
-        print("⏳ База данных еще загружается, ожидаем 3 секунды...")
-        time.sleep(3)
-
-# Основной цикл мониторинга
-while True:
-    try:
-        response = requests.get(url, headers=headers, timeout=5)
-        data = response.json()
-        # Достаем цену в формате Coinbase
-        price = float(data['data']['amount'])
-        
-        print(f"📈 [PostgreSQL] Отправка поочередно идет в БД: Курс BTC = ${price:,.2f}")
-        
-        cursor.execute(
-            "INSERT INTO btc_history (timestamp, price) VALUES (NOW(), %s);",
-            (price,)
-        )
-        conn.commit()
-        
-    except Exception as e:
-        print(f"❌ Ошибка во время работы: {e}")
+async def parser_loop():
+    """Твой текущий бесконечный цикл парсера"""
+    global latest_price
+    while True:
         try:
-            conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
-            cursor = conn.cursor()
-        except:
-            pass
+            # 1. Твой код, который идет на Coinbase за ценой Биткоина
+            current_price = 95000.00  # (Тут твоя логика запроса)
             
-    time.sleep(10)
+            # 2. Твой код, который записывает цену в PostgreSQL
+            # ...
+            
+            # 3. Обновляем глобальную переменную для веб-страницы
+            latest_price = {
+                "btc_usd": current_price,
+                "status": "Parser is running smoothly"
+            }
+            
+            await asyncio.sleep(10)  # Твой интервал паузы
+        except Exception as e:
+            print(f"Error in parser: {e}")
+            await asyncio.sleep(5)
+
+@app.on_event("startup")
+async def start_background_tasks():
+    # Эта магия запускает твой парсер в фоне ОДНОВРЕМЕННО с веб-сервером
+    asyncio.create_task(parser_loop())
+
+@app.get("/")
+def read_root():
+    # Главная страница, которую мы увидим в браузере
+    return {
+        "project": "Crypto Analytics Platform v2",
+        "author": "JJacky",
+        "data": latest_price
+    }

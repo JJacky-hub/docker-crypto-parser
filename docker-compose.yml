@@ -1,35 +1,43 @@
 version: '3.8'
 
 services:
-  # Наша СУБД PostgreSQL
   db:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: crypto_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: crypto_db
       POSTGRES_USER: postgres_user
       POSTGRES_PASSWORD: super_password
-    ports:
-      - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
-    restart: unless-stopped
 
-  # Наш Python-парсер
-  crypto_monitoring:
+  app:
     build: .
-    container_name: btc_live_parser
-    network_mode: host
+    container_name: crypto_parser_app
     restart: unless-stopped
+    # Запускаем приложение через uvicorn на внутреннем порту 8000
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     depends_on:
       - db
     environment:
-      - PYTHONUNBUFFERED=1
-      - DB_HOST=127.0.0.1
+      - DB_HOST=db
       - DB_NAME=crypto_db
       - DB_USER=postgres_user
       - DB_PASS=super_password
 
-# Объявляем именованный volume для безопасного хранения данных СУБД на хосте
+  gateway:
+    image: nginx:alpine
+    container_name: crypto_nginx
+    restart: unless-stopped
+    # Открываем порт 80 наружу, файрвол его пропустит
+    ports:
+      - "80:80"
+    # Пробрасываем настройки Nginx внутрь контейнера
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+
 volumes:
   pg_data:
