@@ -1,7 +1,13 @@
 FROM python:3.10-slim
 
-RUN pip install --no-cache-dir requests psycopg2-binary
+WORKDIR /app
 
-COPY crypto.py /app/crypto.py
+# Сначала копируем и устанавливаем зависимости
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["python", "/app/crypto.py"]
+# Копируем сам скрипт
+COPY crypto.py .
+
+# Команда по умолчанию для запуска FastAPI
+CMD ["uvicorn", "crypto:app", "--host", "0.0.0.0", "--port", "8000"]
