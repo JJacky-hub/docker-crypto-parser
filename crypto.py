@@ -1,25 +1,32 @@
 import os
 import asyncio
+import json
 from datetime import datetime
 from typing import List
 
-from fastapi import FastAPI, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 import httpx
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import declarative_base, sessionmaker
+import redis.asyncio as aioredis
 
-# 1. Подключение к PostgreSQL
+# 1. Настройки БД и Redis
 DB_USER = os.getenv("DB_USER", "postgres_user")
 DB_PASS = os.getenv("DB_PASS", "super_password")
 DB_HOST = os.getenv("DB_HOST", "db")
 DB_NAME = os.getenv("DB_NAME", "crypto_db")
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
+REDIS_URL = f"redis://{REDIS_HOST}:6379"
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# Клиент Redis
+redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
 
 class CryptoPrice(Base):
     __tablename__ = "crypto_prices"
@@ -30,16 +37,9 @@ class CryptoPrice(Base):
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Crypto Analytics Platform", version="3.0")
+app = FastAPI(title="Crypto Analytics & HighLoad Platform", version="4.0")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# 2. Менеджер WebSocket-подключений
+# 2. Менеджер WebSockets
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -61,7 +61,17 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# 3. Фоновый воркер с рассылкой по WebSockets
+# 3. Слушатель Redis Pub/Sub (рассылает из шины Redis в WebSockets)
+async def redis_pubsub_listener():
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe("crypto_prices_channel")
+    
+    async for message in pubsub.listen():
+        if message["type"] == "message":
+            data = json.loads(message["data"])
+            await manager.broadcast(data)
+
+# 4. Фоновый воркер (Парсит -> Сохраняет в Postgres -> Кэширует в Redis -> Публикует в Pub/Sub)
 async def fetch_crypto_prices():
     url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd"
     mapping = {"bitcoin": "BTCUSDT", "ethereum": "ETHUSDT", "solana": "SOLUSDT"}
@@ -85,10 +95,16 @@ async def fetch_crypto_prices():
                     db.commit()
                     db.close()
                     
-                    # Мгновенно рассылаем новые цены всем подключенным клиентам по WebSockets!
                     current_time = datetime.now().strftime('%H:%M:%S')
-                    await manager.broadcast({"time": current_time, "prices": saved_dict})
-                    print(f"[{current_time}] Трансляция цен в WebSocket: {saved_dict}", flush=True)
+                    payload = {"time": current_time, "prices": saved_dict}
+
+                    # А) Кэшируем самые свежие цены в Redis (для моментального REST API)
+                    await redis_client.set("latest_crypto_prices", json.dumps(payload))
+                    
+                    # Б) Публикуем в шину сообщений Redis Pub/Sub
+                    await redis_client.publish("crypto_prices_channel", json.dumps(payload))
+                    
+                    print(f"[{current_time}] [REDIS + DB SUCCESS] {saved_dict}", flush=True)
         except Exception as e:
             print(f"[WORKER ERROR] {e}", flush=True)
             
@@ -97,18 +113,27 @@ async def fetch_crypto_prices():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(fetch_crypto_prices())
+    asyncio.create_task(redis_pubsub_listener())
 
-# 4. WebSocket эндпоинт
+# 5. Мгновенный REST API эндпоинт из кэша Redis (без обращения к PostgreSQL!)
+@app.get("/api/prices/latest-fast")
+async def get_latest_prices_fast():
+    cached_data = await redis_client.get("latest_crypto_prices")
+    if cached_data:
+        return {"source": "redis_cache", "data": json.loads(cached_data)}
+    return {"source": "cache_miss", "message": "Данные еще не закэшированы"}
+
+# 6. WebSocket эндпоинт
 @app.websocket("/ws/prices")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()  # Держим сокет открытым
+            await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-# 5. Веб-Дашборд с Chart.js
+# 7. Дашборд
 @app.get("/dashboard", response_class=HTMLResponse)
 def get_dashboard():
     return """
@@ -116,7 +141,7 @@ def get_dashboard():
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
-        <title>Crypto Real-time Dashboard</title>
+        <title>Crypto Redis HighLoad Dashboard</title>
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
             body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; margin: 20px; }
@@ -126,7 +151,7 @@ def get_dashboard():
     </head>
     <body>
         <div class="container">
-            <h2>📈 Crypto Real-time WebSocket Dashboard</h2>
+            <h2>⚡ Crypto Real-time Dashboard (Powered by Redis Pub/Sub)</h2>
             <div id="status" class="status">Подключение к WebSocket...</div>
             <canvas id="cryptoChart"></canvas>
         </div>
@@ -152,12 +177,11 @@ def get_dashboard():
                 }
             });
 
-            // Подключаемся к нашему WebSocket
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/prices`);
 
             ws.onopen = () => {
-                document.getElementById('status').innerText = '🟢 WebSocket Соединение установлено (Live Data)';
+                document.getElementById('status').innerText = '🟢 WebSocket + Redis Pub/Sub Активен';
             };
 
             ws.onmessage = (event) => {
@@ -165,13 +189,11 @@ def get_dashboard():
                 const time = data.time;
                 const prices = data.prices;
 
-                // Добавляем новые точки на график
                 cryptoChart.data.labels.push(time);
                 cryptoChart.data.datasets[0].data.push(prices.BTCUSDT);
                 cryptoChart.data.datasets[1].data.push(prices.ETHUSDT);
                 cryptoChart.data.datasets[2].data.push(prices.SOLUSDT);
 
-                // Ограничиваем график последними 20 измерениями
                 if (cryptoChart.data.labels.length > 20) {
                     cryptoChart.data.labels.shift();
                     cryptoChart.data.datasets.forEach(d => d.data.shift());
