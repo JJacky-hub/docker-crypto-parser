@@ -26,7 +26,7 @@ Prerequisites: Make sure you have [Docker](https://www.docker.com/) and [Docker 
 
 1. Clone the repository:
 ```bash
-git clone [https://github.com/JJacky-hub/docker-crypto-parser.git](https://github.com/JJacky-hub/docker-crypto-parser.git)
+git clone [https://github.com/JJacky-hub/docker-crypto-parser.git]
 cd docker-crypto-parser
 ```
 
