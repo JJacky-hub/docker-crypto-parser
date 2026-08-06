@@ -1,6 +1,6 @@
 # 🚀 Async Crypto Price Tracker & API
 
-A highly scalable, fully asynchronous microservice application that tracks real-time cryptocurrency prices and serves them via a REST API and WebSockets. 
+A highly scalable, fully asynchronous microservice application that tracks real-time cryptocurrency prices and serves them via a REST API and WebSockets.
 
 This project demonstrates a decoupled backend architecture where background tasks and the main web server operate independently, communicating via Redis.
 
@@ -25,9 +25,20 @@ This project demonstrates a decoupled backend architecture where background task
 Prerequisites: Make sure you have [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed.
 
 1. Clone the repository:
-   ```bash
-   git clone [https://github.com/yourusername/docker-crypto-parser.git](https://github.com/yourusername/docker-crypto-parser.git)
-   cd docker-crypto-parser
-cp .env.example .env 
+```bash
+git clone [https://github.com/JJacky-hub/docker-crypto-parser.git](https://github.com/JJacky-hub/docker-crypto-parser.git)
+cd docker-crypto-parser
+```
+
+2. Copy the example environment variables:
+```bash
+cp .env.example .env
+```
+
+3. Build and start the services:
+```bash
 docker compose up -d --build
-Latest Prices Endpoint: https://crypt0-parser.duckdns.org/api/prices/latest
+```
+
+4. Access the API:
+* **Latest Prices Endpoint:** https://crypt0-parser.duckdns.org/api/prices/latest
