@@ -5,9 +5,9 @@ services:
     image: postgres:15-alpine
     container_name: crypto_db
     environment:
-      POSTGRES_USER: postgres_user
-      POSTGRES_PASSWORD: super_password
-      POSTGRES_DB: crypto_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWOR: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: always
@@ -22,12 +22,18 @@ services:
   crypto_parser_app:
     build: .
     container_name: crypto_parser_app
+    command: uvicorn crypto:app --host 0.0.0.0 --port 8000
+    working_dir: /app
     environment:
-      DB_USER: postgres_user
-      DB_PASS: super_password
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
       DB_HOST: db
-      DB_NAME: crypto_db
+      DB_NAME: ${POSTGRES_DB}
       REDIS_HOST: redis
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
     depends_on:
       - db
       - redis
@@ -38,10 +44,11 @@ services:
     image: dpage/pgadmin4:latest
     container_name: crypto_pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@crypto.com
-      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
       PGADMIN_LISTEN_PORT: 80
     restart: always
+
 
   # 2. Веб-панель для Redis
   redisinsight:
@@ -65,6 +72,37 @@ services:
       - pgadmin
       - redisinsight
     restart: always
+
+  worker:
+    build: .
+    container_name: crypto_parser_worker
+    restart: always
+    working_dir: /app
+    command: taskiq worker broker:broker tasks
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=${REDIS_URL}
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+      - redis
+
+  scheduler:
+    build: .
+    container_name: crypto_parser_scheduler
+    restart: always
+    working_dir: /app
+    command: taskiq scheduler scheduler:scheduler
+    environment:
+      - PYTHONPATH=/app
+      - REDIS_URL=${REDIS_URL}
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+      - worker
 
 volumes:
   postgres_data:
