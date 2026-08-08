@@ -1,4 +1,4 @@
-version: '3.8'
+
 
 services:
   db:
@@ -6,7 +6,7 @@ services:
     container_name: crypto_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWOR: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -30,6 +30,7 @@ services:
       DB_HOST: db
       DB_NAME: ${POSTGRES_DB}
       REDIS_HOST: redis
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@db:5432/crypto_db"
     volumes:
       - .:/app
     ports:
@@ -81,8 +82,14 @@ services:
     command: taskiq worker broker:broker tasks
     environment:
       - PYTHONPATH=/app
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      - REDIS_URL=${REDIS_URL}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASS=${POSTGRES_PASSWORD}
+      - DB_HOST=db
+      - DB_NAME=${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
     volumes:
       - .:/app
     depends_on:
@@ -97,10 +104,18 @@ services:
     command: taskiq scheduler scheduler:scheduler
     environment:
       - PYTHONPATH=/app
-      - REDIS_URL=${REDIS_URL}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASS=${POSTGRES_PASSWORD}
+      - DB_HOST=db
+      - DB_NAME=${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
     volumes:
       - .:/app
     depends_on:
+      - db
       - redis
       - worker
 
