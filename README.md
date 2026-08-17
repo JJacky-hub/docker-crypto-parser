@@ -41,4 +41,4 @@ docker compose up -d --build
 ```
 
 4. Access the API:
-* **Latest Prices Endpoint:** https://crypt0-parser.duckdns.org/api/prices/latest
+* **Latest Prices Endpoint:** https://crypto-parser.online/docs
