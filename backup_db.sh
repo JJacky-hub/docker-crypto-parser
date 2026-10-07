@@ -1,24 +1,35 @@
 #!/bin/bash
 
-# Настройки
-BACKUP_DIR="/root/docker-crypto-parser/backups"
-CONTAINER_NAME="crypto_postgres"
-DB_USER="postgres_user"
-DB_NAME="crypto_db"
+set -euo pipefail
 
-# Текущая дата для имени файла
+BACKUP_DIR="/root/docker-crypto-parser/backups"
+CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-crypto_db}"
+DB_USER="${POSTGRES_USER:-postgres_user}"
+DB_NAME="${POSTGRES_DB:-crypto_db}"
+
 DATE=$(date +%Y-%m-%d_%H-%M-%S)
 FILE_NAME="${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
 
-# 1. Создаем дамп и сжимаем его на лету
-docker exec -t ${CONTAINER_NAME} pg_dump -U ${DB_USER} ${DB_NAME} | gzip > "${FILE_NAME}"
+mkdir -p "${BACKUP_DIR}"
 
-# 2. Проверяем, создался ли файл
-if [ -f "${FILE_NAME}" ]; then
-    echo "[$(date)] Бэкап успешно создан: ${FILE_NAME}"
+echo "[$(date)] Starting PostgreSQL backup..."
+
+docker exec "${CONTAINER_NAME}" \
+  pg_dump -U "${DB_USER}" "${DB_NAME}" \
+  | gzip > "${FILE_NAME}"
+
+if [ -s "${FILE_NAME}" ]; then
+    echo "[$(date)] Backup created: ${FILE_NAME}"
 else
-    echo "[$(date)] Ошибка при создании бэкапа!"
+    echo "[$(date)] Backup failed!"
+    rm -f "${FILE_NAME}"
+    exit 1
 fi
 
-# 3. Удаляем бэкапы старше 7 дней
-find "${BACKUP_DIR}" -type f -name "db_backup_*.sql.gz" -mtime +7 -delete
+find "${BACKUP_DIR}" \
+  -type f \
+  -name "db_backup_*.sql.gz" \
+  -mtime +7 \
+  -delete
+
+echo "[$(date)] Backup completed successfully."
