@@ -1,6 +1,5 @@
-
-
 services:
+
   db:
     image: postgres:15-alpine
     container_name: crypto_db
@@ -15,8 +14,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: crypto_redis
-    ports:
-      - "6379:6379"
     restart: always
 
   crypto_parser_app:
@@ -30,9 +27,7 @@ services:
       DB_HOST: db
       DB_NAME: ${POSTGRES_DB}
       REDIS_HOST: redis
-      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@db:5432/crypto_db"
-    volumes:
-      - .:/app
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
     ports:
       - "8000:8000"
     depends_on:
@@ -40,84 +35,57 @@ services:
       - redis
     restart: always
 
-  # 1. Веб-панель для PostgreSQL
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: crypto_pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
-      PGADMIN_LISTEN_PORT: 80
-    restart: always
-
-
-  # 2. Веб-панель для Redis
-  redisinsight:
-    image: redis/redisinsight:latest
-    container_name: crypto_redisinsight
-    ports:
-      - "5540:5540"
-    restart: always
-
   nginx:
     image: nginx:latest
     container_name: crypto_nginx
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - crypto_parser_app
-      - pgadmin
-      - redisinsight
     restart: always
 
   worker:
     build: .
     container_name: crypto_parser_worker
-    restart: always
-    working_dir: /app
     command: taskiq worker broker:broker tasks
+    working_dir: /app
     environment:
-      - PYTHONPATH=/app
-      - DB_USER=${POSTGRES_USER}
-      - DB_PASS=${POSTGRES_PASSWORD}
-      - DB_HOST=db
-      - DB_NAME=${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-    volumes:
-      - .:/app
+      PYTHONPATH: /app
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_HOST: db
+      DB_NAME: ${POSTGRES_DB}
+      REDIS_HOST: redis
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
     depends_on:
       - db
       - redis
+    restart: always
 
   scheduler:
     build: .
     container_name: crypto_parser_scheduler
-    restart: always
-    working_dir: /app
     command: taskiq scheduler scheduler:scheduler
+    working_dir: /app
     environment:
-      - PYTHONPATH=/app
-      - DB_USER=${POSTGRES_USER}
-      - DB_PASS=${POSTGRES_PASSWORD}
-      - DB_HOST=db
-      - DB_NAME=${POSTGRES_DB}
-      - REDIS_HOST=redis
-      - DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-    volumes:
-      - .:/app
+      PYTHONPATH: /app
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_HOST: db
+      DB_NAME: ${POSTGRES_DB}
+      REDIS_HOST: redis
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
     depends_on:
       - db
       - redis
       - worker
+    restart: always
 
 volumes:
   postgres_data:
